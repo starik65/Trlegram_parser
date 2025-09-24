@@ -1,8 +1,7 @@
 name: Run Colab Notebook
 on:
   schedule:
-    # Запускать каждый день в 9 утра по UTC
-    - cron: '59 * * * *'
+    - cron: '0 6,8,10,12,14,16,18,19 * * *'
   workflow_dispatch:
 
 jobs:
@@ -24,5 +23,10 @@ jobs:
           pip install telethon requests Pillow opencv-python
 
       - name: Run Notebook
+        env:
+          API_ID: ${{ secrets.API_ID }}
+          API_HASH: ${{ secrets.API_HASH }}
+          PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
         run: |
           papermill tt.ipynb output.ipynb
