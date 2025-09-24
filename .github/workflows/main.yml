@@ -1,0 +1,28 @@
+name: Run Colab Notebook
+on:
+  schedule:
+    # Запускать каждый день в 9 утра по UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Install Dependencies
+        run: |
+          pip install jupyter
+          pip install papermill
+          pip install telethon requests Pillow opencv-python
+
+      - name: Run Notebook
+        run: |
+          papermill tt.ipynb output.ipynb
