@@ -1,7 +1,7 @@
 name: Run Colab Notebook
 on:
   schedule:
-    - cron: '0 6,8,10,12,14,16,18,19 * * *'
+    - cron: '45 * * * *'
   workflow_dispatch:
 
 jobs:
