@@ -25,4 +25,4 @@ jobs:
 
       - name: Run Notebook
         run: |
-          papermill tt.ipynb output.ipynb
+          papermill tel.ipynb output.ipynb
