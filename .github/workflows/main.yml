@@ -2,7 +2,7 @@ name: Run Colab Notebook
 on:
   schedule:
     # Запускать каждый день в 9 утра по UTC
-    - cron: '0 9 * * *'
+    - cron: '59 * * * *'
   workflow_dispatch:
 
 jobs:
