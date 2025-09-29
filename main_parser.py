@@ -70,7 +70,12 @@ async def main():
         print("Error: Required environment variables are missing.")
         return
 
+    # Telethon будет искать файл 'my_session.session'. 
+    # Если файл найден, он просто загрузит сессию и не будет запрашивать код.
     client = TelegramClient('my_session', API_ID, API_HASH)
+    
+    # ПРИМЕЧАНИЕ: Если сессия не найдена, клиент попытается войти по номеру телефона.
+    # Это приведет к ошибке, пока не истечет FloodWait (22.7 часа).
     await client.start(phone=PHONE_NUMBER)
 
     print(f"Telethon client started. Starting to parse channel {CHANNEL_USERNAME}...")
@@ -96,9 +101,5 @@ async def main():
 
 
 if __name__ == '__main__':
-    # Clean up old session file to avoid authentication issues
-    if os.path.exists('my_session.session'):
-        os.remove('my_session.session') 
-        
+    # ВАЖНО: Мы больше не удаляем файл сессии.
     asyncio.run(main())
-
