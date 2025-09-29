@@ -1,4 +1,5 @@
-name: Run Colab Notebook
+name: Run Colab Notebook and Trigger n8n
+
 on:
   schedule:
     - cron: '45 * * * *'
@@ -22,11 +23,29 @@ jobs:
           pip install papermill
           pip install telethon requests Pillow opencv-python
 
-      - name: Run Notebook
+      - name: Run Notebook (Parses Data to a File)
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
-          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          # N8N_WEBHOOK_URL больше не нужен в Notebook
         run: |
+          # ВНИМАНИЕ: Если ваш Notebook сохраняет данные в файл (например, results.json), 
+          # то именно этот файл вам нужно будет использовать для отправки в n8n.
           papermill tt.ipynb output.ipynb
+          
+      # ------------------------------------------------------------------
+      # НОВЫЙ БЛОК: Отправка HTTP-запроса в n8n после успешного парсинга.
+      # Этот запрос запустит n8n, который будет ждать файл с данными.
+      # ------------------------------------------------------------------
+      - name: Send trigger to n8n
+        if: success() # Запускать, только если предыдущие шаги прошли успешно
+        env:
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }} # Используем секрет
+        run: |
+          echo "Отправка POST-запроса на Webhook n8n..."
+          # Мы отправляем ПУСТОЙ JSON, чтобы просто запустить рабочий процесс n8n.
+          curl -X POST "${N8N_WEBHOOK_URL}" \
+               -H "Content-Type: application/json" \
+               -d "{}"
+          echo "Триггер отправлен. Проверьте n8n на новое выполнение."
