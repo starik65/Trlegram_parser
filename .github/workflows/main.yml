@@ -1,4 +1,4 @@
-name: Run Colab Notebook and Trigger n8n
+- name: Run Colab Notebook and Trigger n8n
 
 on:
   schedule:
@@ -33,18 +33,15 @@ jobs:
           # то именно этот файл вам нужно будет использовать для отправки в n8n.
           papermill tt.ipynb output.ipynb
           
-      # ------------------------------------------------------------------
-      # ИЗМЕНЕННЫЙ БЛОК: Отправляем Run ID в теле JSON.
-      # n8n сможет легко его прочитать из поля "body".
-      # ------------------------------------------------------------------
-      - name: Send trigger and Run ID to n8n
-        if: success() # Запускать, только если предыдущие шаги прошли успешно
+      - name: Trigger n8n Webhook
+        if: success()
         env:
-          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }} # Используем секрет
-          RUN_ID: ${{ github.run_id }} # Получаем текущий ID выполнения
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Отправка POST-запроса на Webhook n8n с Run ID: $RUN_ID"
           curl -X POST "${N8N_WEBHOOK_URL}" \
                -H "Content-Type: application/json" \
-               -d "{\"run_id\": \"$RUN_ID\"}" # Передаем ID в теле JSON
-          echo "Триггер отправлен. Проверьте n8n на новое выполнение."
+               -d "{\"run_id\": \"$RUN_ID\", \"github_token\": \"$GITHUB_TOKEN\"}"
+          echo "Триггер отправлен. Проверьте n8n."
