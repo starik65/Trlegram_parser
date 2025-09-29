@@ -1,4 +1,4 @@
-- name: Run Colab Notebook and Trigger n8n
+name: Run Telegram Parser
 
 on:
   schedule:
@@ -19,29 +19,15 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install jupyter
-          pip install papermill
-          pip install telethon requests Pillow opencv-python
+          # Устанавливаем telethon и requests
+          pip install telethon requests
 
-      - name: Run Notebook (Parses Data to a File)
+      - name: Run Telegram Parser (Direct to n8n)
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
-        run: |
-          # ВНИМАНИЕ: Если ваш Notebook сохраняет данные в файл (например, results.json), 
-          # то именно этот файл вам нужно будет использовать для отправки в n8n.
-          papermill tt.ipynb output.ipynb
-          
-      - name: Trigger n8n Webhook
-        if: success()
-        env:
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
-          RUN_ID: ${{ github.run_id }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Отправка POST-запроса на Webhook n8n с Run ID: $RUN_ID"
-          curl -X POST "${N8N_WEBHOOK_URL}" \
-               -H "Content-Type: application/json" \
-               -d "{\"run_id\": \"$RUN_ID\", \"github_token\": \"$GITHUB_TOKEN\"}"
-          echo "Триггер отправлен. Проверьте n8n."
+          # Запускаем скрипт, который сам парсит и отправляет данные пакетами в n8n
+          python main_parser.py
