@@ -1,33 +1,63 @@
 name: Run Telegram Parser
 
+# 1. Запуск по Cron (ежечасно в 45 минут) - ВРЕМЕННО ОТКЛЮЧЕНО ИЗ-ЗА FLOOD WAIT
+# on:
+#   schedule:
+#     - cron: '45 * * * *' 
 on:
-  schedule:
-    - cron: '45 * * * *'
-  workflow_dispatch:
+  # 2. Ручной запуск (обязателен для получения первого кода авторизации)
+  workflow_dispatch: 
+  # 3. Запуск при PUSH в main
+  push:
+    branches: [ main ]
 
 jobs:
-  build:
+  run-parser:
     runs-on: ubuntu-latest
+
+    # Используем среду (environment) для защиты секрета Webhook
+    # environment:
+    #   name: production
+    #   url: ${{ secrets.N8N_WEBHOOK_URL }}
+
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- 1. Восстановление сессии ---
+      - name: Restore Telethon Session
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: my_session.session
+          key: ${{ runner.os }}-telethon-${{ hashFiles('main_parser.py') }}
+      # --------------------------------
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install Dependencies
-        run: |
-          # Устанавливаем telethon и requests
-          pip install telethon requests
+      - name: Install dependencies
+        run: pip install telethon requests
 
-      - name: Run Telegram Parser (Direct to n8n)
+      - name: Run parser and send data to n8n
+        run: python main_parser.py
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
-        run: |
-          # Запускаем скрипт, который сам парсит и отправляет данные пакетами в n8n
-          python main_parser.py
+          
+      # --- 2. Сохранение сессии ---
+      - name: Save Telethon Session
+        uses: actions/cache/save@v4
+        id: cache-save
+        with:
+          path: my_session.session
+          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
+          # Сохраняем только если файл сессии действительно существует (успешный вход)
+          # check-latest: true 
+        if: always() && steps.cache-restore.outputs.cache-hit != 'true' && success()
+      # --------------------------------
