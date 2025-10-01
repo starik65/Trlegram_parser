@@ -1,63 +1,37 @@
-name: Run Telegram Parser
+name: Telegram Parser
 
-# 1. Запуск по Cron (ежечасно в 45 минут) - ВРЕМЕННО ОТКЛЮЧЕНО ИЗ-ЗА FLOOD WAIT
-# on:
-#   schedule:
-#     - cron: '45 * * * *' 
 on:
-  # 2. Ручной запуск (обязателен для получения первого кода авторизации)
-  workflow_dispatch: 
-  # 3. Запуск при PUSH в main
-  push:
-    branches: [ main ]
+  schedule:
+    # Запускать каждый час, ровно в 0 минут.
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    # Разрешает ручной запуск через интерфейс GitHub Actions (для переавторизации).
 
 jobs:
   run-parser:
     runs-on: ubuntu-latest
-
-    # Используем среду (environment) для защиты секрета Webhook
-    # environment:
-    #   name: production
-    #   url: ${{ secrets.N8N_WEBHOOK_URL }}
-
+    
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- 1. Восстановление сессии ---
-      - name: Restore Telethon Session
-        uses: actions/cache/restore@v4
-        id: cache-restore
-        with:
-          path: my_session.session
-          key: ${{ runner.os }}-telethon-${{ hashFiles('main_parser.py') }}
-      # --------------------------------
-
+      # ИЗМЕНЕНИЕ ЗДЕСЬ: Используем проверенную версию v4
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4 
         with:
           python-version: '3.11'
-          cache: 'pip'
-
+          
       - name: Install dependencies
-        run: pip install telethon requests
+        run: |
+          pip install jupyter
+          pip install telethon requests nest_asyncio
 
-      - name: Run parser and send data to n8n
-        run: python main_parser.py
+      - name: Execute Telegram Parser Notebook
+        run: |
+          # Выполняет tt.ipynb. Флаг --allow-errors критически важен.
+          jupyter nbconvert --to notebook --execute tt.ipynb --allow-errors
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
-          
-      # --- 2. Сохранение сессии ---
-      - name: Save Telethon Session
-        uses: actions/cache/save@v4
-        id: cache-save
-        with:
-          path: my_session.session
-          key: ${{ steps.cache-restore.outputs.cache-primary-key }}
-          # Сохраняем только если файл сессии действительно существует (успешный вход)
-          # check-latest: true 
-        if: always() && steps.cache-restore.outputs.cache-hit != 'true' && success()
-      # --------------------------------
