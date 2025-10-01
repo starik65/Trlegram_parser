@@ -1,4 +1,3 @@
-
 name: Run Telegram Parser and Scraper
 
 on:
@@ -31,7 +30,8 @@ jobs:
         run: pip install telethon
 
       - name: Run Telegram Scraper (Двухэтапная авторизация)
-        run: python3 telegram_scraper.py
+        # ИСПРАВЛЕНИЕ: Теперь запускаем ваш файл main_parser.py
+        run: python3 main_parser.py
         env:
           # Секретные ключи из настроек репозитория
           API_ID: ${{ secrets.API_ID }}
