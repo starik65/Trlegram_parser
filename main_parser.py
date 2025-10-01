@@ -1,27 +1,24 @@
 import os
 import json
 import sys
-import argparse # Используем argparse для чтения аргументов
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 
 # --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
-def parse_args():
-    """Считывает аргументы командной строки, переданные из Workflow."""
-    parser = argparse.ArgumentParser(description="Telegram Scraper for GitHub Actions")
-    parser.add_argument('--phone', type=str, required=True, help="Telegram phone number.")
-    parser.add_argument('--code', type=str, default='none', help="Telegram authorization code.")
-    return parser.parse_args()
-
 try:
-    # Инициализация переменных из переменных среды (SECRETS)
+    # Обязательные переменные из GitHub Secrets
     API_ID_STR = os.getenv('API_ID')
     API_HASH = os.getenv('API_HASH')
+    
+    # Переменные из INPUTS Workflow (читаем их из переменных среды, как в последней версии)
+    PHONE_NUMBER = os.getenv('INPUT_PHONE_NUMBER')
+    AUTH_CODE = os.getenv('INPUT_AUTH_CODE')
 
+    # ЖЕСТКАЯ ПРОВЕРКА ПЕРЕМЕННЫХ
     if not API_ID_STR or not API_HASH:
-        # Это сообщение должно сработать, если SECRETS не установлены
-        print("ОШИБКА: API_ID или API_HASH не найдены в переменных среды SECRETS.")
-        sys.exit(1)
+        raise ValueError("API_ID или API_HASH не найдены в SECRETS.")
+    if not PHONE_NUMBER:
+        raise ValueError("PHONE_NUMBER не найден в INPUTS.")
     
     API_ID = int(API_ID_STR)
 
@@ -94,18 +91,24 @@ def save_data(data, filename):
 
 # --- ОСНОВНАЯ ЛОГИКА ---
 if __name__ == '__main__':
-    args = parse_args()
-    PHONE_NUMBER = args.phone
-    # Код авторизации читается, и если это 'none' (маркер из YAML), то считаем его None
-    AUTH_CODE = args.code if args.code != 'none' else None 
-    
+    # Если код из INPUTS - это строка 'none', считаем его None
+    if AUTH_CODE and AUTH_CODE.lower() == 'none':
+        AUTH_CODE = None 
+        
     client = None
     auth_successful = False
     
     try:
         print(f"*** НАЧАЛО: АВТОРИЗАЦИЯ И СБОР ДАННЫХ ***")
         
-        client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+        # Самое критичное изменение: используем os.devnull для принудительного отключения интерактивности
+        client = TelegramClient(
+            SESSION_NAME, 
+            API_ID, 
+            API_HASH, 
+            device_model='GitHub Actions Runner',
+            system_version=os.devnull 
+        )
         
         # 1. ПЕРВЫЙ ЗАПУСК: Запрос кода
         if not os.path.exists(SESSION_FILE):
