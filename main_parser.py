@@ -24,11 +24,15 @@ except Exception as e:
 # Фиксированные параметры
 # >>> ИЗМЕНЕН: Теперь это список каналов. Добавьте сюда все, что нужно! <<<
 CHANNELS_LIST = [
-    # Канал 1: Используйте ID, если он приватный или возникают ошибки
     'novostisochi', 
-    # Канал 2: Или используйте @имя (если он публичный)
-    '@sochi24tv', '@livesochi' , '@sochi_news4' , @sochitypical' , '@soch01' , '@sochi_online' , '@sochi03 @sochi_news4' , '@livesochi'
-    # Канал 3: Или ваше оригинальное имя (если оно работает)
+    '@sochi24tv',
+    '@livesochi',
+    '@sochi_news4',
+    '@sochitypical',
+    '@soch01',
+    '@sochi_online',
+    '@sochi03 @sochi_news4',
+    '@livesochi'
     
 ]
 SESSION_NAME = 'colab_session' 
