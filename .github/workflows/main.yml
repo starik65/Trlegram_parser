@@ -29,8 +29,8 @@ jobs:
         run: pip install telethon
 
       - name: Run Telegram Authorization
-        # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Указываем полный путь от корня репозитория
-        run: python3 ../../auth_starter.py
+        # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Исправляем путь на прямой
+        run: python3 ./auth_starter.py
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
