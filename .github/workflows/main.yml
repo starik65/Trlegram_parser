@@ -2,7 +2,6 @@ name: Telegram Parser
 
 on:
   schedule:
-    # Запускать каждый час, ровно в 0 минут.
     - cron: '0 * * * *'
   workflow_dispatch:
     inputs:
@@ -36,5 +35,4 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
-          # НОВОЕ: Передаем код, введенный вручную, в Python-скрипт
           GITHUB_AUTH_CODE: ${{ github.event.inputs.auth_code }}
