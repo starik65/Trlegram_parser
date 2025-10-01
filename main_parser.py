@@ -2,21 +2,20 @@ import os
 import json
 import requests
 import sys
-# Используем синхронный клиент, чтобы избежать конфликта с requests
+# Используем синхронный клиент для простоты в GitHub Actions
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, MessageMediaWebPage
 
 # --- 1. КОНФИГУРАЦИЯ ---
-# Чтение данных из GitHub Secrets (или переменных окружения Actions)
 try:
+    # Чтение данных из GitHub Secrets
     API_ID = os.environ.get('API_ID')
     API_HASH = os.environ.get('API_HASH')
     N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL')
 
     if not all([API_ID, API_HASH, N8N_WEBHOOK_URL]):
-        # Это приведет к ошибке, если переменные не установлены в Secrets
-        raise ValueError("Отсутствуют API_ID, API_HASH или N8N_WEBHOOK_URL в Secrets.")
+        raise ValueError("Отсутствуют API_ID, API_HASH или N8N_WEBHOOK_URL в GitHub Secrets.")
     
     API_ID = int(API_ID)
     
@@ -26,10 +25,10 @@ except Exception as e:
 
 # Фиксированные параметры
 CHANNEL_USERNAME = 't_klych_a'
-# Имя файла сессии, полученного из Colab. ВАЖНО: Загрузите файл с этим именем!
+# Имя сессионного файла, который вы должны были загрузить
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
-LIMIT_MESSAGES = 500 # Ваш запрос на 500 постов
+LIMIT_MESSAGES = 500 # Сбор 500 постов
 
 # --- 2. ФУНКЦИИ ---
 
@@ -80,12 +79,14 @@ def send_to_webhook(batch):
         print(f"Пакет успешно отправлен. Статус: {response.status_code}")
     except requests.exceptions.RequestException as e:
         print(f"Ошибка при отправке пакета в n8n: {e}")
+        # Продолжаем работу, чтобы не ломать весь процесс из-за одного пакета
 
 # --- 3. ОСНОВНАЯ ЛОГИКА ---
 
 def main():
     session_file = f'{SESSION_NAME}.session'
     
+    # ПРОВЕРКА КЛЮЧА
     if not os.path.exists(session_file):
         print(f"!!! КРИТИЧЕСКАЯ ОШИБКА: Файл сессии ({session_file}) не найден.")
         print("Пожалуйста, загрузите файл, полученный из Colab (colab_session.session), в корень репозитория.")
@@ -93,7 +94,7 @@ def main():
 
     print(f"*** НАЧАЛО: ПОДКЛЮЧЕНИЕ С ИСПОЛЬЗОВАНИЕМ {session_file} ***")
     
-    # Telethon автоматически обновляет сессионный файл при disconnect()
+    # Создание клиента. Telethon обновит сессионный файл при отключении.
     client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
     
     try:
@@ -134,7 +135,7 @@ def main():
         print(f"КРИТИЧЕСКАЯ ОШИБКА ПАРСИНГА: {e}")
         
     finally:
-        # ЭТО ОБНОВЛЯЕТ СЕССИОННЫЙ ФАЙЛ, сохраняя его актуальность!
+        # ОБНОВЛЕНИЕ СЕССИИ
         client.disconnect()
         print(f"*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ФАЙЛ {session_file} ОБНОВЛЕН. ***")
 
