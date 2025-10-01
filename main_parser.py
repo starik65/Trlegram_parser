@@ -143,3 +143,4 @@ if __name__ == '__main__':
         if client and client.is_connected():
             client.disconnect()
             print("\n*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ***")
+
