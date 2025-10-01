@@ -11,7 +11,6 @@ nest_asyncio.apply()
 # 1. СЕКРЕТНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
 # ---------------------------------------------
 
-# Получаем переменные из GitHub Secrets / main.yml
 API_ID = int(os.environ.get('API_ID', 0))
 API_HASH = os.environ.get('API_HASH', '')
 PHONE_NUMBER = os.environ.get('PHONE_NUMBER', '')
@@ -39,10 +38,10 @@ client = TelegramClient('my_session', API_ID, API_HASH)
 async def get_auth_code():
     """Получает код авторизации из переменной окружения GITHUB_AUTH_CODE."""
     print("--- ОЖИДАНИЕ КОДА АВТОРИЗАЦИИ ---")
-    print("ACTION: Проверьте Telegram. Скрипт будет ждать 120 секунд. Запускайте Action повторно с кодом.")
+    print("ACTION: Проверьте Telegram, скопируйте код и запустите Action повторно, вставив код в поле 'auth_code'.")
     
+    # Даем 120 секунд на ввод кода на GitHub
     for i in range(1, 121):
-        # Перечитываем переменную на случай повторного запуска
         code = os.environ.get('GITHUB_AUTH_CODE')
         if code:
             print(f"Код получен. Авторизация...")
@@ -52,7 +51,6 @@ async def get_auth_code():
              print(f"Прошло {i} секунд. Код не введен.")
         time.sleep(1)
 
-    # Если таймаут, вызываем ошибку, чтобы Action упал
     raise TimeoutError("Код авторизации не был предоставлен в течение 120 секунд.")
 
 
@@ -67,22 +65,21 @@ async def run_parser_logic():
     if not await client.is_user_authorized():
         print("Клиент не авторизован. Инициирую процесс авторизации.")
         try:
-            # УБРАЛ is_bot=False и другие лишние аргументы
+            # АВТОРИЗАЦИЯ: используем code_callback
             await client.start(
                 phone=PHONE_NUMBER, 
                 code_callback=get_auth_code 
             )
             print("--- КЛИЕНТ УСПЕШНО АВТОРИЗОВАН! ---")
-            # Новый файл my_session.session должен быть создан
+            
         except TimeoutError as e:
             print(f"Ошибка авторизации (Таймаут): {e}")
             exit(1)
         except Exception as e:
-            # Ловит ошибки, включая AuthKeyUnregisteredError.
-            # Если это AuthKeyUnregisteredError, это значит, что Telethon отправил код,
-            # но не смог завершить процесс без ввода.
+            # Если AuthKeyUnregisteredError: это значит, код отправлен, но не принят.
             print(f"Критическая ошибка Telethon во время старта: {e}")
-            print("--- ПОЖАЛУЙСТА, ПРОВЕРЬТЕ СВОЙ TELEGRAM. КОД ДОЛЖЕН БЫТЬ ОТПРАВЛЕН. ---")
+            print("--- ВНИМАНИЕ: Скрипт отправил код авторизации в Telegram. ---")
+            print("Выполните второй запуск, вставив полученный код.")
             exit(1)
             
     # ----------------------------------------------------------------
@@ -90,13 +87,14 @@ async def run_parser_logic():
     # ----------------------------------------------------------------
     
     print("Клиент авторизован. Начинаю парсинг.")
-    
     # ... Ваш код парсинга
     
-    # await client.run_until_disconnected() # Опционально
+    # Закрываем соединение в конце
+    await client.disconnect()
 
 
 if __name__ == '__main__':
-    # Используем with client для правильной обработки соединения
-    with client:
-        client.loop.run_until_complete(run_parser_logic())
+    # ФИНАЛЬНОЕ ИЗМЕНЕНИЕ: Убираем with client, чтобы избежать запроса input()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(client.connect()) # Сначала подключаемся
+    loop.run_until_complete(run_parser_logic()) # Потом запускаем логику
