@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio 
 import nest_asyncio
 from telethon import TelegramClient
 # Вам нужно добавить сюда импорты для requests и GetHistoryRequest, если они нужны
