@@ -12,11 +12,12 @@ try:
     AUTH_CODE = os.getenv('AUTH_CODE')
     PHONE_NUMBER = os.getenv('PHONE_NUMBER')
 
+    # Имя файла сессии, который будет создан после успешной авторизации. 
     SESSION_NAME = 'sochi_llm_session'
     SESSION_FILE = f'{SESSION_NAME}.session'
     
     if not API_ID or not API_HASH:
-        raise ValueError("API_ID или API_HASH не найдены.")
+        raise ValueError("API_ID или API_HASH не найдены в переменных среды.")
         
 except Exception as e:
     print(f"ОШИБКА КОНФИГУРАЦИИ: {e}")
@@ -34,7 +35,6 @@ OUTPUT_FILE = 'telegram_data_for_training.jsonl'
 
 def collect_data(client, channels, limit):
     """Собирает сообщения из списка каналов."""
-    from telethon.tl.functions.messages import GetHistoryRequest
     all_messages = []
     
     for channel_id in channels:
@@ -85,6 +85,7 @@ def save_data(data, filename):
 # --- ОСНОВНАЯ ЛОГИКА ---
 if __name__ == '__main__':
     client = None
+    auth_successful = False
     try:
         print(f"*** НАЧАЛО: АВТОРИЗАЦИЯ И СБОР ДАННЫХ ***")
         
@@ -113,10 +114,16 @@ if __name__ == '__main__':
             print(f"Попытка входа с кодом: {AUTH_CODE}")
             client.sign_in(PHONE_NUMBER, AUTH_CODE)
 
+            # Если sign_in успешен, сессия создана
+            auth_successful = True
+        
         # 2. ПОСЛЕДУЮЩИЕ ЗАПУСКИ: Используем сохраненную сессию
-        client.start() 
+        if os.path.exists(SESSION_FILE) and not auth_successful:
+            client.start() 
+            auth_successful = True # Сессия загружена
 
-        if client.is_user_authorized():
+        
+        if auth_successful and client.is_user_authorized():
             print("--- АВТОРИЗАЦИЯ ПРОШЛА УСПЕШНО! ---")
             
             scraped_data = collect_data(client, CHANNELS, LIMIT)
@@ -126,8 +133,8 @@ if __name__ == '__main__':
             else:
                 print("Сбор данных завершен, но сообщений не найдено.")
                 
-        else:
-            print("!!! АВТОРИЗАЦИЯ НЕ УДАЛАСЬ. ПРОВЕРЬТЕ API_HASH ИЛИ УДАЛИТЕ ФАЙЛ СЕССИИ.")
+        elif not auth_successful:
+             print("!!! АВТОРИЗАЦИЯ НЕ УДАЛАСЬ. ПРОВЕРЬТЕ API_HASH ИЛИ УДАЛИТЕ ФАЙЛ СЕССИИ.")
             
     except Exception as e:
         print(f"\n!!! КРИТИЧЕСКАЯ ОШИБКА ВЫПОЛНЕНИЯ: {e}")
