@@ -4,49 +4,45 @@ from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 
 # --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
-# Чтение ключей из переменных среды GitHub Actions
 try:
-    # API_ID и API_HASH должны быть установлены как переменные среды в GitHub Actions
+    # Обязательные переменные из GitHub Secrets
     API_ID = int(os.getenv('API_ID'))
     API_HASH = os.getenv('API_HASH')
-    # Имя файла сессии, который будет создан после успешной авторизации. 
-    # Должно быть постоянным.
+    # Переменные из INPUTS Workflow для авторизации
+    AUTH_CODE = os.getenv('AUTH_CODE')
+    PHONE_NUMBER = os.getenv('PHONE_NUMBER')
+
     SESSION_NAME = 'sochi_llm_session'
+    SESSION_FILE = f'{SESSION_NAME}.session'
     
     if not API_ID or not API_HASH:
-        raise ValueError("API_ID или API_HASH не найдены в переменных среды.")
+        raise ValueError("API_ID или API_HASH не найдены.")
         
-except ValueError as e:
+except Exception as e:
     print(f"ОШИБКА КОНФИГУРАЦИИ: {e}")
     exit(1)
 
 
-# Список каналов для сбора данных. Используйте публичные имена (@...) или ID.
-# Вы можете добавить сюда больше каналов для обучения
+# Список каналов для сбора данных.
 CHANNELS = [
     'sochi24tv', 
     'tipich_sochi', 
-    # Добавьте свои каналы
 ]
-# Количество сообщений для сбора из каждого канала за один запуск
 LIMIT = 200
-
-# Файл, куда будут сохраняться собранные данные в формате JSON Lines (JSONL)
 OUTPUT_FILE = 'telegram_data_for_training.jsonl'
 
 
 def collect_data(client, channels, limit):
     """Собирает сообщения из списка каналов."""
+    from telethon.tl.functions.messages import GetHistoryRequest
     all_messages = []
     
     for channel_id in channels:
         try:
             print(f"--> Начинаем сбор данных из канала: {channel_id}")
             
-            # Получаем объект канала
             entity = client.get_entity(channel_id)
             
-            # Получаем историю сообщений
             messages = client(GetHistoryRequest(
                 peer=entity,
                 limit=limit,
@@ -60,7 +56,6 @@ def collect_data(client, channels, limit):
             
             print(f"    Собрано {len(messages)} сообщений.")
             
-            # Обрабатываем сообщения и форматируем их для обучения
             for message in messages:
                 if message.message and message.id:
                     all_messages.append({
@@ -83,7 +78,6 @@ def save_data(data, filename):
     print(f"\n--> Сохраняем {len(data)} сообщений в файл {filename}")
     with open(filename, 'a', encoding='utf-8') as f:
         for record in data:
-            # Используем ensure_ascii=False для корректного сохранения кириллицы
             f.write(json.dumps(record, ensure_ascii=False) + '\n')
     print("Сохранение завершено.")
 
@@ -92,36 +86,53 @@ def save_data(data, filename):
 if __name__ == '__main__':
     client = None
     try:
-        print(f"*** НАЧАЛО: ПОДГОТОВКА К АВТОРИЗАЦИИ TELETHON ***")
+        print(f"*** НАЧАЛО: АВТОРИЗАЦИЯ И СБОР ДАННЫХ ***")
         
-        # 1. СОЗДАНИЕ КЛИЕНТА
         client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
         
-        # client.start() выполняет интерактивную авторизацию.
-        # Action приостановит выполнение, ожидая ввод (Phone, Code, Password).
+        # 1. ПЕРВЫЙ ЗАПУСК: Авторизация по коду (только если нет сессии)
+        if not os.path.exists(SESSION_FILE):
+            print("--- Сессионный файл не найден. Требуется одноразовая авторизация. ---")
+            
+            if not PHONE_NUMBER:
+                raise ValueError("Отсутствует PHONE_NUMBER в входных параметрах Workflow.")
+
+            client.connect()
+            
+            # А) Запрашиваем код (Telegram отправляет КОД 1)
+            print("Отправляем запрос на получение кода...")
+            client.send_code_request(PHONE_NUMBER) 
+            
+            if not AUTH_CODE:
+                # Action завершается, чтобы вы успели скопировать Код 1 
+                print("\n!!! ПЕРВЫЙ ЭТАП ЗАВЕРШЕН. СКОПИРУЙТЕ КОД ИЗ TELEGRAM И ЗАПУСТИТЕ ACTION ПОВТОРНО, ВВЕДЯ КОД В INPUTS. !!!")
+                client.disconnect()
+                exit(0)
+            
+            # Б) Вводим код (это происходит во ВТОРОМ ЗАПУСКЕ)
+            print(f"Попытка входа с кодом: {AUTH_CODE}")
+            client.sign_in(PHONE_NUMBER, AUTH_CODE)
+
+        # 2. ПОСЛЕДУЮЩИЕ ЗАПУСКИ: Используем сохраненную сессию
         client.start() 
 
         if client.is_user_authorized():
             print("--- АВТОРИЗАЦИЯ ПРОШЛА УСПЕШНО! ---")
             
-            # 2. СБОР ДАННЫХ
             scraped_data = collect_data(client, CHANNELS, LIMIT)
             
-            # 3. СОХРАНЕНИЕ
             if scraped_data:
                 save_data(scraped_data, OUTPUT_FILE)
             else:
                 print("Сбор данных завершен, но сообщений не найдено.")
                 
         else:
-            # Это сообщение будет выведено, если Action остановится в ожидании ввода.
-            print("!!! АВТОРИЗАЦИЯ НЕ ЗАВЕРШЕНА. ПОЖАЛУЙСТА, ВВЕДИТЕ ДАННЫЕ В ЛОГАХ ПРИ ВЫПОЛНЕНИИ.")
+            print("!!! АВТОРИЗАЦИЯ НЕ УДАЛАСЬ. ПРОВЕРЬТЕ API_HASH ИЛИ УДАЛИТЕ ФАЙЛ СЕССИИ.")
             
     except Exception as e:
         print(f"\n!!! КРИТИЧЕСКАЯ ОШИБКА ВЫПОЛНЕНИЯ: {e}")
         
     finally:
-        # Обязательное отключение клиента
         if client and client.is_connected():
             client.disconnect()
             print("\n*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ***")
