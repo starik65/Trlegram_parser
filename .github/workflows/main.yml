@@ -1,4 +1,4 @@
-name: Run Telegram Parser and Scraper
+name: Run Telegram Parser 
 
 on:
   # Позволяет запускать воркфлоу вручную через интерфейс GitHub Actions
@@ -30,12 +30,12 @@ jobs:
         run: pip install telethon
 
       - name: Run Telegram Scraper (Двухэтапная авторизация)
-        # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Передаем данные напрямую через аргументы
-        run: |
-          python3 main_parser.py \
-            --phone ${{ github.event.inputs.phone_number }} \
-            --code ${{ github.event.inputs.auth_code }}
+        # Мы НЕ используем аргументы, а используем переменные среды, чтобы обойти проблемы с аргументами.
+        run: python3 main_parser.py
         env:
           # Секретные ключи из настроек репозитория
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
+          # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Передаем данные из inputs как переменные среды
+          INPUT_PHONE_NUMBER: ${{ github.event.inputs.phone_number }}
+          INPUT_AUTH_CODE: ${{ github.event.inputs.auth_code }}
