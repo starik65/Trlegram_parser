@@ -1,27 +1,31 @@
 import os
 import json
+import sys # Добавляем sys для более чистого выхода
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 
 # --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
 try:
     # Обязательные переменные из GitHub Secrets
-    API_ID = int(os.getenv('API_ID'))
+    API_ID_STR = os.getenv('API_ID')
     API_HASH = os.getenv('API_HASH')
     # Переменные из INPUTS Workflow для авторизации
     AUTH_CODE = os.getenv('AUTH_CODE')
     PHONE_NUMBER = os.getenv('PHONE_NUMBER')
 
-    # Имя файла сессии, который будет создан после успешной авторизации. 
-    SESSION_NAME = 'sochi_llm_fresh_session'
+    # ЖЕСТКАЯ ПРОВЕРКА ПЕРЕМЕННЫХ СРЕДЫ
+    if not API_ID_STR or not API_HASH:
+        raise ValueError("API_ID или API_HASH не найдены. Проверьте SECRETS.")
+    
+    API_ID = int(API_ID_STR)
+
+    # Имя файла сессии, должно быть уникальным
+    SESSION_NAME = 'sochi_llm_final_fix_session'
     SESSION_FILE = f'{SESSION_NAME}.session'
     
-    if not API_ID or not API_HASH:
-        raise ValueError("API_ID или API_HASH не найдены в переменных среды.")
-        
 except Exception as e:
     print(f"ОШИБКА КОНФИГУРАЦИИ: {e}")
-    exit(1)
+    sys.exit(1)
 
 
 # Список каналов для сбора данных.
@@ -89,9 +93,10 @@ if __name__ == '__main__':
     try:
         print(f"*** НАЧАЛО: АВТОРИЗАЦИЯ И СБОР ДАННЫХ ***")
         
+        # Клиент создается только после жесткой проверки!
         client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
         
-        # 1. ПЕРВЫЙ ЗАПУСК: Авторизация по коду (только если нет сессии)
+        # 1. ПЕРВЫЙ ЗАПУСК: Запрос кода
         if not os.path.exists(SESSION_FILE):
             print("--- Сессионный файл не найден. Требуется одноразовая авторизация. ---")
             
@@ -108,19 +113,18 @@ if __name__ == '__main__':
                 # Action завершается, чтобы вы успели скопировать Код 1 
                 print("\n!!! ПЕРВЫЙ ЭТАП ЗАВЕРШЕН. СКОПИРУЙТЕ КОД ИЗ TELEGRAM И ЗАПУСТИТЕ ACTION ПОВТОРНО, ВВЕДЯ КОД В INPUTS. !!!")
                 client.disconnect()
-                exit(0)
+                sys.exit(0)
             
             # Б) Вводим код (это происходит во ВТОРОМ ЗАПУСКЕ)
             print(f"Попытка входа с кодом: {AUTH_CODE}")
             client.sign_in(PHONE_NUMBER, AUTH_CODE)
 
-            # Если sign_in успешен, сессия создана
             auth_successful = True
         
         # 2. ПОСЛЕДУЮЩИЕ ЗАПУСКИ: Используем сохраненную сессию
         if os.path.exists(SESSION_FILE) and not auth_successful:
             client.start() 
-            auth_successful = True # Сессия загружена
+            auth_successful = True 
 
         
         if auth_successful and client.is_user_authorized():
