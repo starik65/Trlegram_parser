@@ -13,7 +13,7 @@ try:
     PHONE_NUMBER = os.getenv('PHONE_NUMBER')
 
     # Имя файла сессии, который будет создан после успешной авторизации. 
-    SESSION_NAME = 'sochi_llm_session'
+    SESSION_NAME = 'sochi_llm_fresh_session'
     SESSION_FILE = f'{SESSION_NAME}.session'
     
     if not API_ID or not API_HASH:
