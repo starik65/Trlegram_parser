@@ -5,7 +5,7 @@ on:
     # Запускать каждый час, ровно в 0 минут.
     - cron: '0 * * * *'
   workflow_dispatch:
-    # Разрешает ручной запуск через интерфейс GitHub Actions (для переавторизации).
+    # Разрешает ручной запуск через интерфейс GitHub Actions (критически важно для переавторизации).
 
 jobs:
   run-parser:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ИЗМЕНЕНИЕ ЗДЕСЬ: Используем проверенную версию v4
+      # Исправлено: Используем стабильную версию v4
       - name: Set up Python
         uses: actions/setup-python@v4 
         with:
@@ -23,12 +23,14 @@ jobs:
           
       - name: Install dependencies
         run: |
+          # Установка Jupyter и библиотек Telethon, requests, nest_asyncio
           pip install jupyter
           pip install telethon requests nest_asyncio
 
       - name: Execute Telegram Parser Notebook
         run: |
-          # Выполняет tt.ipynb. Флаг --allow-errors критически важен.
+          # Запуск tt.ipynb через nbconvert. Флаг --allow-errors необходим для Telethon
+          # в случае, если он ждет ввода кода авторизации.
           jupyter nbconvert --to notebook --execute tt.ipynb --allow-errors
         env:
           API_ID: ${{ secrets.API_ID }}
