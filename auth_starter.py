@@ -51,11 +51,14 @@ if __name__ == '__main__':
         if not os.path.exists(SESSION_FILE):
             print("--- Сессионный файл не найден. Начинаем одноразовую авторизацию. ---")
             
-            client.connect()
+            # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Используем client.start(), который автоматически подключается, 
+            # вместо client.connect()
+            client.start()
             
             # А) ПЕРВЫЙ ЗАПУСК: Запрашиваем код
             if AUTH_CODE is None:
                 print("Отправляем запрос на получение кода...")
+                # Теперь мы точно подключены, и можем отправить запрос
                 client.send_code_request(PHONE_NUMBER) 
                 
                 # Action завершается
