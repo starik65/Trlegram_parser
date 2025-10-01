@@ -1,25 +1,31 @@
 import os
 import json
-import sys # Добавляем sys для более чистого выхода
+import sys
+import argparse # Используем argparse для чтения аргументов
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 
 # --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
+def parse_args():
+    """Считывает аргументы командной строки, переданные из Workflow."""
+    parser = argparse.ArgumentParser(description="Telegram Scraper for GitHub Actions")
+    parser.add_argument('--phone', type=str, required=True, help="Telegram phone number.")
+    parser.add_argument('--code', type=str, default='none', help="Telegram authorization code.")
+    return parser.parse_args()
+
 try:
-    # Обязательные переменные из GitHub Secrets
+    # Инициализация переменных из переменных среды (SECRETS)
     API_ID_STR = os.getenv('API_ID')
     API_HASH = os.getenv('API_HASH')
-    # Переменные из INPUTS Workflow для авторизации
-    AUTH_CODE = os.getenv('AUTH_CODE')
-    PHONE_NUMBER = os.getenv('PHONE_NUMBER')
 
-    # ЖЕСТКАЯ ПРОВЕРКА ПЕРЕМЕННЫХ СРЕДЫ
     if not API_ID_STR or not API_HASH:
-        raise ValueError("API_ID или API_HASH не найдены. Проверьте SECRETS.")
+        # Это сообщение должно сработать, если SECRETS не установлены
+        print("ОШИБКА: API_ID или API_HASH не найдены в переменных среды SECRETS.")
+        sys.exit(1)
     
     API_ID = int(API_ID_STR)
 
-    # Имя файла сессии, должно быть уникальным
+    # Уникальное имя сессии
     SESSION_NAME = 'sochi_llm_final_fix_session'
     SESSION_FILE = f'{SESSION_NAME}.session'
     
@@ -88,28 +94,30 @@ def save_data(data, filename):
 
 # --- ОСНОВНАЯ ЛОГИКА ---
 if __name__ == '__main__':
+    args = parse_args()
+    PHONE_NUMBER = args.phone
+    # Код авторизации читается, и если это 'none' (маркер из YAML), то считаем его None
+    AUTH_CODE = args.code if args.code != 'none' else None 
+    
     client = None
     auth_successful = False
+    
     try:
         print(f"*** НАЧАЛО: АВТОРИЗАЦИЯ И СБОР ДАННЫХ ***")
         
-        # Клиент создается только после жесткой проверки!
         client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
         
         # 1. ПЕРВЫЙ ЗАПУСК: Запрос кода
         if not os.path.exists(SESSION_FILE):
             print("--- Сессионный файл не найден. Требуется одноразовая авторизация. ---")
             
-            if not PHONE_NUMBER:
-                raise ValueError("Отсутствует PHONE_NUMBER в входных параметрах Workflow.")
-
             client.connect()
             
             # А) Запрашиваем код (Telegram отправляет КОД 1)
             print("Отправляем запрос на получение кода...")
             client.send_code_request(PHONE_NUMBER) 
             
-            if not AUTH_CODE:
+            if AUTH_CODE is None:
                 # Action завершается, чтобы вы успели скопировать Код 1 
                 print("\n!!! ПЕРВЫЙ ЭТАП ЗАВЕРШЕН. СКОПИРУЙТЕ КОД ИЗ TELEGRAM И ЗАПУСТИТЕ ACTION ПОВТОРНО, ВВЕДЯ КОД В INPUTS. !!!")
                 client.disconnect()
