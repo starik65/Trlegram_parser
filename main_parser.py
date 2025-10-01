@@ -22,23 +22,20 @@ except Exception as e:
     sys.exit(1)
 
 # Фиксированные параметры
-# >>> ИЗМЕНЕН: Теперь это список каналов. Добавьте сюда все, что нужно! <<<
+# >>> ИСПРАВЛЕНО: Правильный формат для списка каналов <<<
 CHANNELS_LIST = [
-    'novostisochi', 
+    '@novostisochi',      # Добавлен @
     '@sochi24tv',
-    '@livesochi',
-    '@sochi_news4',
+    '@livesochi',         # Дубликат удален
+    '@sochi_news4',       # Дубликат удален
     '@sochitypical',
     '@soch01',
     '@sochi_online',
-    '@sochi03 @sochi_news4',
-    '@livesochi'
-    
+    '@sochi03',           # Разделен с @sochi_news4
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
-LIMIT_MESSAGES = 500 # Сбор 500 постов с КАЖДОГО канала
-
+LIMIT_MESSAGES = 500
 # --- 2. ФУНКЦИИ ---
 
 def clean_message(msg, channel_entity):
