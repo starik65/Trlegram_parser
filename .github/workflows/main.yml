@@ -1,7 +1,13 @@
 name: 🚀 Telegram Parser & n8n Sender (Сессионный файл)
 
 on:
-  # Позволяет запускать воркфлоу вручную через интерфейс GitHub Actions
+  # 1. Запуск по расписанию (КАЖДЫЕ 2 ЧАСА с 09:00 до 23:00 по Сочи/МСК)
+  schedule:
+    # 0 6,8,10,12,14,16,18,20 * * *
+    # Соответствует 09:00, 11:00, 13:00, 15:00, 17:00, 19:00, 21:00, 23:00 по UTC+3
+    - cron: '0 6,8,10,12,14,16,18,20 * * *'
+    
+  # 2. Ручной запуск (для отладки)
   workflow_dispatch:
     inputs:
       webhook_url:
@@ -24,10 +30,10 @@ jobs:
       - run: pip install telethon requests
 
       - name: Run Telegram Parser and Send to n8n
-        # !!! ЭТА КОМАНДА ЗАПУСКАЕТ НОВЫЙ СКРИПТ main_parser.py !!!
+        # Запускает главный скрипт
         run: python3 main_parser.py
         env:
-          # Передача секретов и URL Webhook в скрипт
           API_ID: ${{ secrets.API_ID }} 
           API_HASH: ${{ secrets.API_HASH }}
-          N8N_WEBHOOK_URL: ${{ github.event.inputs.webhook_url }}
+          # Использует URL из ручного ввода ИЛИ из Secrets (для расписания)
+          N8N_WEBHOOK_URL: ${{ github.event.inputs.webhook_url || secrets.N8N_WEBHOOK_URL }} 
