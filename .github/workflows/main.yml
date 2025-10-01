@@ -1,38 +1,42 @@
-name: Telegram Parser
+
+name: Run Telegram Parser and Scraper
 
 on:
-  schedule:
-    - cron: '0 * * * *'
+  # Позволяет запускать воркфлоу вручную через интерфейс GitHub Actions
   workflow_dispatch:
     inputs:
+      phone_number:
+        description: 'Ваш номер телефона Telegram (в формате +7XXXXXXXXXX)'
+        required: true
+        default: '+7' 
       auth_code:
-        description: 'Код авторизации Telegram (вводится вручную после первого запуска)'
+        description: 'Код авторизации Telegram (требуется только для второго запуска)'
         required: false
         default: ''
 
 jobs:
   run-parser:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4 
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          
-      - name: Install dependencies
-        run: |
-          pip install telethon requests nest_asyncio
-          
-      - name: Execute Telegram Parser Script
-        run: |
-          python main_parser.py 
+          python-version: '3.x' 
+
+      - name: Install dependencies (Telethon)
+        run: pip install telethon
+
+      - name: Run Telegram Scraper (Двухэтапная авторизация)
+        run: python3 telegram_scraper.py
         env:
+          # Секретные ключи из настроек репозитория
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
-          PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
-          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
-          GITHUB_AUTH_CODE: ${{ github.event.inputs.auth_code }}
+          
+          # Передача входных данных Workflow в переменные среды скрипта Python
+          PHONE_NUMBER: ${{ github.event.inputs.phone_number }}
+          AUTH_CODE: ${{ github.event.inputs.auth_code }}
