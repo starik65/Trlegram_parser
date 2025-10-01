@@ -10,7 +10,7 @@ on:
       auth_code:
         description: 'Код авторизации Telegram (требуется только для второго запуска)'
         required: false
-        default: 'none' # Маркер для первого запуска
+        default: 'none'
 
 jobs:
   auth-and-run:
@@ -28,23 +28,10 @@ jobs:
       - name: Install dependencies
         run: pip install telethon
 
-      - name: Run Telegram Authorization (Принудительное отключение ввода)
-        # Запускаем НОВЫЙ скрипт, чтобы обойти кэш
+      - name: Run Telegram Authorization
         run: python3 auth_starter.py
         env:
-          # Передаем все данные как переменные среды, чтобы скрипт их читал
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           INPUT_PHONE_NUMBER: ${{ github.event.inputs.phone_number }}
           INPUT_AUTH_CODE: ${{ github.event.inputs.auth_code }}
-
----
-
-**Пожалуйста:**
-
-1.  **Создайте новый файл** `auth_starter.py` с его кодом.
-2.  **Замените** `main.yml` на новый код.
-3.  Сделайте **один коммит**.
-4.  **Запустите Action (Этап 1)**, введя номер телефона и оставив код пустым.
-
-Это должно, наконец, запустить этап запроса кода. Это наш последний, самый надежный метод. Сообщите мне, что вы увидите в логах.
