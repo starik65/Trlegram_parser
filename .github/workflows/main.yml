@@ -1,7 +1,6 @@
-name: Run Telegram Parser 
+name: Telegram Authorization and Scraping
 
 on:
-  # Позволяет запускать воркфлоу вручную через интерфейс GitHub Actions
   workflow_dispatch:
     inputs:
       phone_number:
@@ -14,7 +13,7 @@ on:
         default: 'none' # Маркер для первого запуска
 
 jobs:
-  run-parser:
+  auth-and-run:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,16 +25,26 @@ jobs:
         with:
           python-version: '3.x' 
 
-      - name: Install dependencies (Telethon)
+      - name: Install dependencies
         run: pip install telethon
 
-      - name: Run Telegram Scraper (Двухэтапная авторизация)
-        # Мы НЕ используем аргументы, а используем переменные среды, чтобы обойти проблемы с аргументами.
-        run: python3 main_parser.py
+      - name: Run Telegram Authorization (Принудительное отключение ввода)
+        # Запускаем НОВЫЙ скрипт, чтобы обойти кэш
+        run: python3 auth_starter.py
         env:
-          # Секретные ключи из настроек репозитория
+          # Передаем все данные как переменные среды, чтобы скрипт их читал
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
-          # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Передаем данные из inputs как переменные среды
           INPUT_PHONE_NUMBER: ${{ github.event.inputs.phone_number }}
           INPUT_AUTH_CODE: ${{ github.event.inputs.auth_code }}
+
+---
+
+**Пожалуйста:**
+
+1.  **Создайте новый файл** `auth_starter.py` с его кодом.
+2.  **Замените** `main.yml` на новый код.
+3.  Сделайте **один коммит**.
+4.  **Запустите Action (Этап 1)**, введя номер телефона и оставив код пустым.
+
+Это должно, наконец, запустить этап запроса кода. Это наш последний, самый надежный метод. Сообщите мне, что вы увидите в логах.
