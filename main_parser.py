@@ -1,160 +1,143 @@
 import os
 import json
+import requests
 import sys
+# Используем синхронный клиент, чтобы избежать конфликта с requests
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
+from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, MessageMediaWebPage
 
-# --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
+# --- 1. КОНФИГУРАЦИЯ ---
+# Чтение данных из GitHub Secrets (или переменных окружения Actions)
 try:
-    # Обязательные переменные из GitHub Secrets
-    API_ID_STR = os.getenv('API_ID')
-    API_HASH = os.getenv('API_HASH')
-    
-    # Переменные из INPUTS Workflow (читаем их из переменных среды, как в последней версии)
-    PHONE_NUMBER = os.getenv('INPUT_PHONE_NUMBER')
-    AUTH_CODE = os.getenv('INPUT_AUTH_CODE')
+    API_ID = os.environ.get('API_ID')
+    API_HASH = os.environ.get('API_HASH')
+    N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL')
 
-    # ЖЕСТКАЯ ПРОВЕРКА ПЕРЕМЕННЫХ
-    if not API_ID_STR or not API_HASH:
-        raise ValueError("API_ID или API_HASH не найдены в SECRETS.")
-    if not PHONE_NUMBER:
-        raise ValueError("PHONE_NUMBER не найден в INPUTS.")
+    if not all([API_ID, API_HASH, N8N_WEBHOOK_URL]):
+        # Это приведет к ошибке, если переменные не установлены в Secrets
+        raise ValueError("Отсутствуют API_ID, API_HASH или N8N_WEBHOOK_URL в Secrets.")
     
-    API_ID = int(API_ID_STR)
-
-    # Уникальное имя сессии
-    SESSION_NAME = 'sochi_llm_final_fix_session'
-    SESSION_FILE = f'{SESSION_NAME}.session'
+    API_ID = int(API_ID)
     
 except Exception as e:
     print(f"ОШИБКА КОНФИГУРАЦИИ: {e}")
     sys.exit(1)
 
+# Фиксированные параметры
+CHANNEL_USERNAME = 't_klych_a'
+# Имя файла сессии, полученного из Colab. ВАЖНО: Загрузите файл с этим именем!
+SESSION_NAME = 'colab_session' 
+BATCH_SIZE = 500
+LIMIT_MESSAGES = 500 # Ваш запрос на 500 постов
 
-# Список каналов для сбора данных.
-CHANNELS = [
-    'sochi24tv', 
-    'tipich_sochi', 
-]
-LIMIT = 200
-OUTPUT_FILE = 'telegram_data_for_training.jsonl'
+# --- 2. ФУНКЦИИ ---
 
+def clean_message(msg):
+    """Преобразует объект сообщения Telethon в чистый словарь JSON."""
+    if not msg or not msg.message:
+        return None 
 
-def collect_data(client, channels, limit):
-    """Собирает сообщения из списка каналов."""
-    all_messages = []
-    
-    for channel_id in channels:
-        try:
-            print(f"--> Начинаем сбор данных из канала: {channel_id}")
-            
-            entity = client.get_entity(channel_id)
-            
-            messages = client(GetHistoryRequest(
-                peer=entity,
-                limit=limit,
-                offset_date=None,
-                offset_id=0,
-                max_id=0,
-                min_id=0,
-                add_offset=0,
-                hash=0,
-            )).messages
-            
-            print(f"    Собрано {len(messages)} сообщений.")
-            
-            for message in messages:
-                if message.message and message.id:
-                    all_messages.append({
-                        'id': message.id,
-                        'channel': channel_id,
-                        'date': str(message.date),
-                        'text': message.message,
-                        'views': message.views,
-                    })
+    data = {
+        'message_id': msg.id,
+        'channel_id': msg.peer_id.channel_id if hasattr(msg.peer_id, 'channel_id') else None,
+        'channel_name': CHANNEL_USERNAME,
+        'text': msg.message,
+        'date': str(msg.date),
+        'has_media': msg.media is not None,
+        'media_type': None,
+        'file_name': None
+    }
 
-        except Exception as e:
-            print(f"!!! Ошибка при обработке канала {channel_id}: {e}")
-            continue
-
-    return all_messages
-
-
-def save_data(data, filename):
-    """Сохраняет данные в формат JSONL (JSON Lines)."""
-    print(f"\n--> Сохраняем {len(data)} сообщений в файл {filename}")
-    with open(filename, 'a', encoding='utf-8') as f:
-        for record in data:
-            f.write(json.dumps(record, ensure_ascii=False) + '\n')
-    print("Сохранение завершено.")
-
-
-# --- ОСНОВНАЯ ЛОГИКА ---
-if __name__ == '__main__':
-    # Если код из INPUTS - это строка 'none', считаем его None
-    if AUTH_CODE and AUTH_CODE.lower() == 'none':
-        AUTH_CODE = None 
+    if msg.media:
+        data['media_type'] = type(msg.media).__name__
         
-    client = None
-    auth_successful = False
+        if isinstance(msg.media, MessageMediaDocument) and msg.media.document:
+            for attr in msg.media.document.attributes:
+                if hasattr(attr, 'file_name'):
+                    data['file_name'] = attr.file_name
+                    break
+        elif isinstance(msg.media, MessageMediaWebPage) and hasattr(msg.media.webpage, 'site_name'):
+            data['file_name'] = msg.media.webpage.site_name
+
+    return data
+
+def send_to_webhook(batch):
+    """Отправляет пакет сообщений в n8n."""
+    if not batch:
+        return
+
+    print(f"Отправка пакета из {len(batch)} сообщений в n8n...")
+
+    try:
+        response = requests.post(
+            N8N_WEBHOOK_URL,
+            json=batch, 
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
+        response.raise_for_status() 
+        print(f"Пакет успешно отправлен. Статус: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"Ошибка при отправке пакета в n8n: {e}")
+
+# --- 3. ОСНОВНАЯ ЛОГИКА ---
+
+def main():
+    session_file = f'{SESSION_NAME}.session'
+    
+    if not os.path.exists(session_file):
+        print(f"!!! КРИТИЧЕСКАЯ ОШИБКА: Файл сессии ({session_file}) не найден.")
+        print("Пожалуйста, загрузите файл, полученный из Colab (colab_session.session), в корень репозитория.")
+        sys.exit(1)
+
+    print(f"*** НАЧАЛО: ПОДКЛЮЧЕНИЕ С ИСПОЛЬЗОВАНИЕМ {session_file} ***")
+    
+    # Telethon автоматически обновляет сессионный файл при disconnect()
+    client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
     
     try:
-        print(f"*** НАЧАЛО: АВТОРИЗАЦИЯ И СБОР ДАННЫХ ***")
-        
-        # Самое критичное изменение: используем os.devnull для принудительного отключения интерактивности
-        client = TelegramClient(
-            SESSION_NAME, 
-            API_ID, 
-            API_HASH, 
-            device_model='GitHub Actions Runner',
-            system_version=os.devnull 
-        )
-        
-        # 1. ПЕРВЫЙ ЗАПУСК: Запрос кода
-        if not os.path.exists(SESSION_FILE):
-            print("--- Сессионный файл не найден. Требуется одноразовая авторизация. ---")
-            
-            client.connect()
-            
-            # А) Запрашиваем код (Telegram отправляет КОД 1)
-            print("Отправляем запрос на получение кода...")
-            client.send_code_request(PHONE_NUMBER) 
-            
-            if AUTH_CODE is None:
-                # Action завершается, чтобы вы успели скопировать Код 1 
-                print("\n!!! ПЕРВЫЙ ЭТАП ЗАВЕРШЕН. СКОПИРУЙТЕ КОД ИЗ TELEGRAM И ЗАПУСТИТЕ ACTION ПОВТОРНО, ВВЕДЯ КОД В INPUTS. !!!")
-                client.disconnect()
-                sys.exit(0)
-            
-            # Б) Вводим код (это происходит во ВТОРОМ ЗАПУСКЕ)
-            print(f"Попытка входа с кодом: {AUTH_CODE}")
-            client.sign_in(PHONE_NUMBER, AUTH_CODE)
+        client.connect() 
 
-            auth_successful = True
-        
-        # 2. ПОСЛЕДУЮЩИЕ ЗАПУСКИ: Используем сохраненную сессию
-        if os.path.exists(SESSION_FILE) and not auth_successful:
-            client.start() 
-            auth_successful = True 
+        if not client.is_user_authorized():
+            print("!!! ОШИБКА АВТОРИЗАЦИИ: Сессионный файл недействителен или устарел.")
+            sys.exit(1)
 
+        print(f"Клиент авторизован. Начинаем парсинг канала {CHANNEL_USERNAME}...")
+
+        # --- Логика пакетной обработки и отправки ---
+        message_buffer = []
+
+        # Парсинг 500 постов
+        messages = client.get_messages(CHANNEL_USERNAME, limit=LIMIT_MESSAGES)
         
-        if auth_successful and client.is_user_authorized():
-            print("--- АВТОРИЗАЦИЯ ПРОШЛА УСПЕШНО! ---")
-            
-            scraped_data = collect_data(client, CHANNELS, LIMIT)
-            
-            if scraped_data:
-                save_data(scraped_data, OUTPUT_FILE)
-            else:
-                print("Сбор данных завершен, но сообщений не найдено.")
-                
-        elif not auth_successful:
-             print("!!! АВТОРИЗАЦИЯ НЕ УДАЛАСЬ. ПРОВЕРЬТЕ API_HASH ИЛИ УДАЛИТЕ ФАЙЛ СЕССИИ.")
-            
+        print(f"Всего получено {len(messages)} сообщений. Обработка...")
+        
+        for msg in messages:
+            cleaned_data = clean_message(msg)
+
+            if cleaned_data:
+                message_buffer.append(cleaned_data)
+
+                # Отправка пакета
+                if len(message_buffer) >= BATCH_SIZE:
+                    send_to_webhook(message_buffer)
+                    message_buffer = [] 
+
+        # Отправка оставшихся сообщений
+        if message_buffer:
+            send_to_webhook(message_buffer)
+
+        print("Парсинг завершен. Все сообщения отправлены или обработаны.")
+
     except Exception as e:
-        print(f"\n!!! КРИТИЧЕСКАЯ ОШИБКА ВЫПОЛНЕНИЯ: {e}")
+        print(f"КРИТИЧЕСКАЯ ОШИБКА ПАРСИНГА: {e}")
         
     finally:
-        if client and client.is_connected():
-            client.disconnect()
-            print("\n*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ***")
+        # ЭТО ОБНОВЛЯЕТ СЕССИОННЫЙ ФАЙЛ, сохраняя его актуальность!
+        client.disconnect()
+        print(f"*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ФАЙЛ {session_file} ОБНОВЛЕН. ***")
+
+
+if __name__ == '__main__':
+    main()
