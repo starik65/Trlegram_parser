@@ -2,8 +2,14 @@ name: Telegram Parser
 
 on:
   schedule:
+    # Запускать каждый час, ровно в 0 минут.
     - cron: '0 * * * *'
   workflow_dispatch:
+    inputs:
+      auth_code:
+        description: 'Код авторизации Telegram (вводится вручную после первого запуска)'
+        required: false
+        default: ''
 
 jobs:
   run-parser:
@@ -20,10 +26,8 @@ jobs:
           
       - name: Install dependencies
         run: |
-          # Устанавливаем только нужные библиотеки (без Jupyter)
           pip install telethon requests nest_asyncio
           
-      # ИЗМЕНЕНИЕ: Запускаем чистый Python-скрипт main_parser.py
       - name: Execute Telegram Parser Script
         run: |
           python main_parser.py 
@@ -32,3 +36,5 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          # НОВОЕ: Передаем код, введенный вручную, в Python-скрипт
+          GITHUB_AUTH_CODE: ${{ github.event.inputs.auth_code }}
