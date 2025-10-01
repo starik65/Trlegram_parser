@@ -1,105 +1,130 @@
 import os
-import json
+import time
 import asyncio
+import nest_asyncio
 import requests
-from telethon.sync import TelegramClient
-from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, MessageMediaWebPage, MessageMediaContact
+from telethon import TelegramClient
+from telethon.tl.functions.messages import GetHistoryRequest
 
-# --- Configuration ---
-API_ID = os.environ.get('API_ID')
-API_HASH = os.environ.get('API_HASH')
-PHONE_NUMBER = os.environ.get('PHONE_NUMBER')
-N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL')
+# Применяем nest_asyncio для корректного запуска в синхронной среде (на всякий случай)
+nest_asyncio.apply()
 
-# Replace with the actual channel username or ID
-CHANNEL_USERNAME = 't_klych_a' 
-BATCH_SIZE = 500  # Split messages into batches of 500
+# ---------------------------------------------
+# 1. СЕКРЕТНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+# ---------------------------------------------
 
-# --- Functions ---
+# Получаем переменные из GitHub Secrets / main.yml
+API_ID = int(os.environ.get('API_ID', 0))
+API_HASH = os.environ.get('API_HASH', '')
+PHONE_NUMBER = os.environ.get('PHONE_NUMBER', '')
+N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL', '')
+AUTH_CODE_INPUT = os.environ.get('GITHUB_AUTH_CODE', '') # Код авторизации
 
-def clean_message(msg):
-    """Converts a Telethon message object into a clean JSON dictionary."""
-    if not msg.message:
-        return None 
+# Проверка, что ID и HASH присутствуют
+if not API_ID or not API_HASH:
+    print("FATAL ERROR: API_ID or API_HASH is missing in environment variables.")
+    exit(1)
 
-    data = {
-        'message_id': msg.id,
-        'channel_id': msg.peer_id.channel_id if hasattr(msg.peer_id, 'channel_id') else None,
-        'channel_name': CHANNEL_USERNAME,
-        'text': msg.message,
-        'date': str(msg.date),
-        'has_media': msg.media is not None,
-        'media_type': None,
-        'file_name': None
-    }
 
-    if msg.media:
-        data['media_type'] = type(msg.media).__name__
+# ---------------------------------------------
+# 2. ИНИЦИАЛИЗАЦИЯ КЛИЕНТА
+# ---------------------------------------------
+
+# Инициализируем клиента. 'my_session' — имя файла сессии.
+client = TelegramClient('my_session', API_ID, API_HASH)
+
+
+# ---------------------------------------------
+# 3. ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ КОДА (ИСПРАВЛЕНИЕ EOFError)
+# ---------------------------------------------
+
+async def get_auth_code():
+    """Получает код авторизации из переменной окружения GITHUB_AUTH_CODE."""
+    print("--- ОЖИДАНИЕ КОДА АВТОРИЗАЦИИ ---")
+    print("ACTION: Нажмите 'Run workflow' еще раз и вставьте код из Telegram в поле 'auth_code'.")
+    
+    # Мы даем 120 секунд, чтобы вы успели скопировать и вставить код на GitHub
+    for i in range(120):
+        # Получаем переменную внутри цикла, чтобы она обновилась при повторном запуске Action
+        code = os.environ.get('GITHUB_AUTH_CODE')
+        if code:
+            print(f"Код получен из переменной окружения. Авторизация...")
+            return code
         
-        if isinstance(msg.media, MessageMediaDocument) and msg.media.document:
-            for attr in msg.media.document.attributes:
-                if hasattr(attr, 'file_name'):
-                    data['file_name'] = attr.file_name
-                    break
-        elif isinstance(msg.media, MessageMediaWebPage) and hasattr(msg.media.webpage, 'site_name'):
-            data['file_name'] = msg.media.webpage.site_name
-            
-    return data
+        if i % 30 == 0:
+             print(f"Прошло {i} секунд. Код не введен. Action завершится через {120 - i} секунд.")
+        time.sleep(1)
 
-def send_to_webhook(batch):
-    """Sends a batch of messages to n8n."""
-    if not batch:
-        return
+    raise TimeoutError("Код авторизации не был предоставлен в течение 120 секунд. Скрипт завершен.")
 
-    print(f"Sending batch of {len(batch)} messages to n8n...")
+
+# ---------------------------------------------
+# 4. ОСНОВНАЯ ЛОГИКА (ВАШ КОД ПАРСИНГА ЗДЕСЬ)
+# ---------------------------------------------
+
+async def run_parser_logic():
+    """Ваша логика парсинга и отправки данных Webhook."""
     
-    try:
-        response = requests.post(
-            N8N_WEBHOOK_URL,
-            json=batch, 
-            headers={'Content-Type': 'application/json'},
-            timeout=30
-        )
-        response.raise_for_status() 
-        print(f"Batch successfully sent. Status: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        print(f"Error sending batch to n8n: {e}")
-
-async def main():
-    if not all([API_ID, API_HASH, PHONE_NUMBER, N8N_WEBHOOK_URL]):
-        print("Error: Required environment variables are missing.")
-        return
-
-    # Telethon будет искать файл 'my_session.session'. 
-    # Если файл найден, он просто загрузит сессию и не будет запрашивать код.
-    client = TelegramClient('my_session', API_ID, API_HASH)
+    # --- 1. АВТОРИЗАЦИЯ ---
+    if not await client.is_user_authorized():
+        print("Клиент не авторизован. Инициирую процесс авторизации.")
+        try:
+            await client.start(
+                phone=PHONE_NUMBER, 
+                code_callback=get_auth_code # Используем нашу функцию вместо стандартного input()
+            )
+            print("--- КЛИЕНТ УСПЕШНО АВТОРИЗОВАН! ---")
+            # Новый файл my_session.session должен быть создан
+        except TimeoutError as e:
+            print(f"Ошибка авторизации: {e}")
+            exit(1)
+        except Exception as e:
+            # Сюда попадет, если Telethon прислал код, но не смог его обработать
+            print(f"Ошибка авторизации: {e}. Возможно, нужно повторить попытку с новым кодом.")
+            exit(1)
     
-    # ПРИМЕЧАНИЕ: Если сессия не найдена, клиент попытается войти по номеру телефона.
-    # Это приведет к ошибке, пока не истечет FloodWait (22.7 часа).
-    await client.start(phone=PHONE_NUMBER)
-
-    print(f"Telethon client started. Starting to parse channel {CHANNEL_USERNAME}...")
+    print("Клиент авторизован. Начинаю парсинг.")
     
-    message_buffer = []
+    # --- 2. ВАШ КОД ПАРСИНГА (ПРИМЕР) ---
+    # *Вставьте сюда вашу логику получения данных, обработки постов и формирования JSON*
+    # 
+    # ПРИМЕР:
+    # entity = await client.get_entity('t.me/your_channel_name')
+    # posts = await client(GetHistoryRequest(
+    #     peer=entity,
+    #     limit=5,
+    #     offset_date=None,
+    #     offset_id=0,
+    #     max_id=0,
+    #     min_id=0,
+    #     add_offset=0,
+    #     hash=0
+    # ))
+    #
+    # processed_data = []
+    # for msg in posts.messages:
+    #     processed_data.append({
+    #         'title': msg.date.strftime('%Y-%m-%d'),
+    #         'text': msg.message[:50],
+    #         'url': f"https://t.me/channel_name/{msg.id}"
+    #     })
     
-    # Iterate over the last 1000 messages for testing
-    async for msg in client.iter_messages(CHANNEL_USERNAME, limit=1000): 
-        cleaned_data = clean_message(msg)
-        
-        if cleaned_data:
-            message_buffer.append(cleaned_data)
-            
-            if len(message_buffer) >= BATCH_SIZE:
-                send_to_webhook(message_buffer)
-                message_buffer = [] 
-                
-    if message_buffer:
-        send_to_webhook(message_buffer)
+    # --- 3. ОТПРАВКА НА WEBHOOK (ПРИМЕР) ---
+    # if processed_data and N8N_WEBHOOK_URL:
+    #     print(f"Отправка {len(processed_data)} элементов на Webhook...")
+    #     response = requests.post(N8N_WEBHOOK_URL, json=processed_data)
+    #     print(f"Webhook response status: {response.status_code}")
+    # else:
+    #     print("Нет новых данных для отправки.")
 
-    print("Parsing complete. All messages sent or processed.")
     await client.run_until_disconnected()
 
 
+# ---------------------------------------------
+# 5. ТОЧКА ВХОДА
+# ---------------------------------------------
+
 if __name__ == '__main__':
-    # ВАЖНО: Мы больше не удаляем файл сессии.
-    asyncio.run(main())
+    # Запускаем асинхронную функцию в синхронном блоке
+    with client:
+        client.loop.run_until_complete(run_parser_logic())
