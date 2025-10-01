@@ -1,100 +1,127 @@
 import os
-import time
-import asyncio
-import nest_asyncio
-from telethon import TelegramClient
+import json
+from telethon.sync import TelegramClient
+from telethon.tl.functions.messages import GetHistoryRequest
 
-# Применяем nest_asyncio для корректного запуска
-nest_asyncio.apply()
-
-# ---------------------------------------------
-# 1. СЕКРЕТНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
-# ---------------------------------------------
-
-API_ID = int(os.environ.get('API_ID', 0))
-API_HASH = os.environ.get('API_HASH', '')
-PHONE_NUMBER = os.environ.get('PHONE_NUMBER', '')
-N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL', '')
-
-# Код авторизации, который вы вводите вручную
-AUTH_CODE_INPUT = os.environ.get('GITHUB_AUTH_CODE', '') 
-
-if not API_ID or not API_HASH or not PHONE_NUMBER:
-    print("FATAL ERROR: API_ID, API_HASH, or PHONE_NUMBER is missing.")
+# --- КОНСТАНТЫ И КОНФИГУРАЦИЯ ---
+# Чтение ключей из переменных среды GitHub Actions
+try:
+    # API_ID и API_HASH должны быть установлены как переменные среды в GitHub Actions
+    API_ID = int(os.getenv('API_ID'))
+    API_HASH = os.getenv('API_HASH')
+    # Имя файла сессии, который будет создан после успешной авторизации. 
+    # Должно быть постоянным.
+    SESSION_NAME = 'sochi_llm_session'
+    
+    if not API_ID or not API_HASH:
+        raise ValueError("API_ID или API_HASH не найдены в переменных среды.")
+        
+except ValueError as e:
+    print(f"ОШИБКА КОНФИГУРАЦИИ: {e}")
     exit(1)
 
 
-# ---------------------------------------------
-# 2. ИНИЦИАЛИЗАЦИЯ КЛИЕНТА
-# ---------------------------------------------
+# Список каналов для сбора данных. Используйте публичные имена (@...) или ID.
+# Вы можете добавить сюда больше каналов для обучения
+CHANNELS = [
+    'sochi24tv', 
+    'tipich_sochi', 
+    # Добавьте свои каналы
+]
+# Количество сообщений для сбора из каждого канала за один запуск
+LIMIT = 200
 
-client = TelegramClient('my_session', API_ID, API_HASH)
+# Файл, куда будут сохраняться собранные данные в формате JSON Lines (JSONL)
+OUTPUT_FILE = 'telegram_data_for_training.jsonl'
 
 
-# ---------------------------------------------
-# 3. ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ КОДА (ИСПРАВЛЯЕТ EOFError)
-# ---------------------------------------------
-
-async def get_auth_code():
-    """Получает код авторизации из переменной окружения GITHUB_AUTH_CODE."""
-    print("--- ОЖИДАНИЕ КОДА АВТОРИЗАЦИИ ---")
-    print("ACTION: Проверьте Telegram, скопируйте код и запустите Action повторно, вставив код в поле 'auth_code'.")
+def collect_data(client, channels, limit):
+    """Собирает сообщения из списка каналов."""
+    all_messages = []
     
-    # Даем 120 секунд на ввод кода на GitHub
-    for i in range(1, 121):
-        code = os.environ.get('GITHUB_AUTH_CODE')
-        if code:
-            print(f"Код получен. Авторизация...")
-            return code
-        
-        if i % 30 == 0:
-             print(f"Прошло {i} секунд. Код не введен.")
-        time.sleep(1)
-
-    raise TimeoutError("Код авторизации не был предоставлен в течение 120 секунд.")
-
-
-# ---------------------------------------------
-# 4. ОСНОВНАЯ ЛОГИКА
-# ---------------------------------------------
-
-async def run_parser_logic():
-    """Основная функция для запуска клиента и парсинга."""
-    
-    # --- 1. ПРЯМОЙ ВЫЗОВ START ДЛЯ АВТОРИЗАЦИИ ---
-    if not await client.is_user_authorized():
-        print("Клиент не авторизован. Инициирую процесс авторизации.")
+    for channel_id in channels:
         try:
-            # АВТОРИЗАЦИЯ: используем code_callback
-            await client.start(
-                phone=PHONE_NUMBER, 
-                code_callback=get_auth_code 
-            )
-            print("--- КЛИЕНТ УСПЕШНО АВТОРИЗОВАН! ---")
+            print(f"--> Начинаем сбор данных из канала: {channel_id}")
             
-        except TimeoutError as e:
-            print(f"Ошибка авторизации (Таймаут): {e}")
-            exit(1)
+            # Получаем объект канала
+            entity = client.get_entity(channel_id)
+            
+            # Получаем историю сообщений
+            messages = client(GetHistoryRequest(
+                peer=entity,
+                limit=limit,
+                offset_date=None,
+                offset_id=0,
+                max_id=0,
+                min_id=0,
+                add_offset=0,
+                hash=0,
+            )).messages
+            
+            print(f"    Собрано {len(messages)} сообщений.")
+            
+            # Обрабатываем сообщения и форматируем их для обучения
+            for message in messages:
+                if message.message and message.id:
+                    all_messages.append({
+                        'id': message.id,
+                        'channel': channel_id,
+                        'date': str(message.date),
+                        'text': message.message,
+                        'views': message.views,
+                    })
+
         except Exception as e:
-            # Если AuthKeyUnregisteredError: это значит, код отправлен, но не принят.
-            print(f"Критическая ошибка Telethon во время старта: {e}")
-            print("--- ВНИМАНИЕ: Скрипт отправил код авторизации в Telegram. ---")
-            print("Выполните второй запуск, вставив полученный код.")
-            exit(1)
-            
-    # ----------------------------------------------------------------
-    # ВАШ КОД ПАРСИНГА И ОТПРАВКИ ДАННЫХ (вставьте его здесь)
-    # ----------------------------------------------------------------
-    
-    print("Клиент авторизован. Начинаю парсинг.")
-    # ... Ваш код парсинга
-    
-    # Закрываем соединение в конце
-    await client.disconnect()
+            print(f"!!! Ошибка при обработке канала {channel_id}: {e}")
+            continue
+
+    return all_messages
 
 
+def save_data(data, filename):
+    """Сохраняет данные в формат JSONL (JSON Lines)."""
+    print(f"\n--> Сохраняем {len(data)} сообщений в файл {filename}")
+    with open(filename, 'a', encoding='utf-8') as f:
+        for record in data:
+            # Используем ensure_ascii=False для корректного сохранения кириллицы
+            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+    print("Сохранение завершено.")
+
+
+# --- ОСНОВНАЯ ЛОГИКА ---
 if __name__ == '__main__':
-    # ФИНАЛЬНОЕ ИЗМЕНЕНИЕ: Убираем with client, чтобы избежать запроса input()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(client.connect()) # Сначала подключаемся
-    loop.run_until_complete(run_parser_logic()) # Потом запускаем логику
+    client = None
+    try:
+        print(f"*** НАЧАЛО: ПОДГОТОВКА К АВТОРИЗАЦИИ TELETHON ***")
+        
+        # 1. СОЗДАНИЕ КЛИЕНТА
+        client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+        
+        # client.start() выполняет интерактивную авторизацию.
+        # Action приостановит выполнение, ожидая ввод (Phone, Code, Password).
+        client.start() 
+
+        if client.is_user_authorized():
+            print("--- АВТОРИЗАЦИЯ ПРОШЛА УСПЕШНО! ---")
+            
+            # 2. СБОР ДАННЫХ
+            scraped_data = collect_data(client, CHANNELS, LIMIT)
+            
+            # 3. СОХРАНЕНИЕ
+            if scraped_data:
+                save_data(scraped_data, OUTPUT_FILE)
+            else:
+                print("Сбор данных завершен, но сообщений не найдено.")
+                
+        else:
+            # Это сообщение будет выведено, если Action остановится в ожидании ввода.
+            print("!!! АВТОРИЗАЦИЯ НЕ ЗАВЕРШЕНА. ПОЖАЛУЙСТА, ВВЕДИТЕ ДАННЫЕ В ЛОГАХ ПРИ ВЫПОЛНЕНИИ.")
+            
+    except Exception as e:
+        print(f"\n!!! КРИТИЧЕСКАЯ ОШИБКА ВЫПОЛНЕНИЯ: {e}")
+        
+    finally:
+        # Обязательное отключение клиента
+        if client and client.is_connected():
+            client.disconnect()
+            print("\n*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ***")
