@@ -11,7 +11,7 @@ on:
       auth_code:
         description: 'Код авторизации Telegram (требуется только для второго запуска)'
         required: false
-        default: ''
+        default: 'none' # Маркер для первого запуска
 
 jobs:
   run-parser:
@@ -30,13 +30,12 @@ jobs:
         run: pip install telethon
 
       - name: Run Telegram Scraper (Двухэтапная авторизация)
-        # ИСПРАВЛЕНИЕ: Теперь запускаем ваш файл main_parser.py
-        run: python3 main_parser.py
+        # КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Передаем данные напрямую через аргументы
+        run: |
+          python3 main_parser.py \
+            --phone ${{ github.event.inputs.phone_number }} \
+            --code ${{ github.event.inputs.auth_code }}
         env:
           # Секретные ключи из настроек репозитория
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
-          
-          # Передача входных данных Workflow в переменные среды скрипта Python
-          PHONE_NUMBER: ${{ github.event.inputs.phone_number }}
-          AUTH_CODE: ${{ github.event.inputs.auth_code }}
