@@ -2,14 +2,12 @@ import os
 import json
 import requests
 import sys
-# Используем синхронный клиент для простоты в GitHub Actions
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, MessageMediaWebPage
 
 # --- 1. КОНФИГУРАЦИЯ ---
 try:
-    # Чтение данных из GitHub Secrets
     API_ID = os.environ.get('API_ID')
     API_HASH = os.environ.get('API_HASH')
     N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL')
@@ -24,23 +22,33 @@ except Exception as e:
     sys.exit(1)
 
 # Фиксированные параметры
-CHANNEL_USERNAME = 't_klych_a'
-# Имя сессионного файла, который вы должны были загрузить
+# >>> ИЗМЕНЕН: Теперь это список каналов. Добавьте сюда все, что нужно! <<<
+CHANNELS_LIST = [
+    # Канал 1: Используйте ID, если он приватный или возникают ошибки
+    'novostisochi', 
+    # Канал 2: Или используйте @имя (если он публичный)
+    '@sochi24tv', '@livesochi' , '@sochi_news4' , @sochitypical' , '@soch01' , '@sochi_online' , '@sochi03 @sochi_news4' , '@livesochi'
+    # Канал 3: Или ваше оригинальное имя (если оно работает)
+    
+]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
-LIMIT_MESSAGES = 500 # Сбор 500 постов
+LIMIT_MESSAGES = 500 # Сбор 500 постов с КАЖДОГО канала
 
 # --- 2. ФУНКЦИИ ---
 
-def clean_message(msg):
+def clean_message(msg, channel_entity):
     """Преобразует объект сообщения Telethon в чистый словарь JSON."""
     if not msg or not msg.message:
         return None 
 
+    # Получаем имя/заголовок канала для записи в JSON
+    channel_name = getattr(channel_entity, 'title', str(channel_entity))
+    
     data = {
         'message_id': msg.id,
         'channel_id': msg.peer_id.channel_id if hasattr(msg.peer_id, 'channel_id') else None,
-        'channel_name': CHANNEL_USERNAME,
+        'channel_name': channel_name, # Используем реальное имя канала
         'text': msg.message,
         'date': str(msg.date),
         'has_media': msg.media is not None,
@@ -79,14 +87,12 @@ def send_to_webhook(batch):
         print(f"Пакет успешно отправлен. Статус: {response.status_code}")
     except requests.exceptions.RequestException as e:
         print(f"Ошибка при отправке пакета в n8n: {e}")
-        # Продолжаем работу, чтобы не ломать весь процесс из-за одного пакета
 
 # --- 3. ОСНОВНАЯ ЛОГИКА ---
 
 def main():
     session_file = f'{SESSION_NAME}.session'
     
-    # ПРОВЕРКА КЛЮЧА
     if not os.path.exists(session_file):
         print(f"!!! КРИТИЧЕСКАЯ ОШИБКА: Файл сессии ({session_file}) не найден.")
         print("Пожалуйста, загрузите файл, полученный из Colab (colab_session.session), в корень репозитория.")
@@ -94,7 +100,6 @@ def main():
 
     print(f"*** НАЧАЛО: ПОДКЛЮЧЕНИЕ С ИСПОЛЬЗОВАНИЕМ {session_file} ***")
     
-    # Создание клиента. Telethon обновит сессионный файл при отключении.
     client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
     
     try:
@@ -104,40 +109,52 @@ def main():
             print("!!! ОШИБКА АВТОРИЗАЦИИ: Сессионный файл недействителен или устарел.")
             sys.exit(1)
 
-        print(f"Клиент авторизован. Начинаем парсинг канала {CHANNEL_USERNAME}...")
-
-        # --- Логика пакетной обработки и отправки ---
-        message_buffer = []
-
-        # Парсинг 500 постов
-        messages = client.get_messages(CHANNEL_USERNAME, limit=LIMIT_MESSAGES)
+        print(f"Клиент авторизован. Начинаем парсинг {len(CHANNELS_LIST)} каналов...")
         
-        print(f"Всего получено {len(messages)} сообщений. Обработка...")
-        
-        for msg in messages:
-            cleaned_data = clean_message(msg)
+        # --- ЦИКЛ ПО ВСЕМ КАНАЛАМ ---
+        for channel_identifier in CHANNELS_LIST:
+            try:
+                print(f"\n--- ПАРСИНГ КАНАЛА: {channel_identifier} ---")
+                
+                # Получаем сущность канала (это нужно, чтобы Telethon его нашел)
+                channel_entity = client.get_entity(channel_identifier)
+                
+                message_buffer = []
+                
+                # Парсинг 500 постов
+                messages = client.get_messages(channel_entity, limit=LIMIT_MESSAGES)
+                
+                print(f"Получено {len(messages)} сообщений. Обработка...")
+                
+                for msg in messages:
+                    # Передаем сущность, чтобы получить чистое имя канала
+                    cleaned_data = clean_message(msg, channel_entity) 
 
-            if cleaned_data:
-                message_buffer.append(cleaned_data)
+                    if cleaned_data:
+                        message_buffer.append(cleaned_data)
 
-                # Отправка пакета
-                if len(message_buffer) >= BATCH_SIZE:
+                        # Отправка пакета, если достигнут лимит
+                        if len(message_buffer) >= BATCH_SIZE:
+                            send_to_webhook(message_buffer)
+                            message_buffer = [] 
+
+                # Отправка оставшихся сообщений
+                if message_buffer:
                     send_to_webhook(message_buffer)
-                    message_buffer = [] 
 
-        # Отправка оставшихся сообщений
-        if message_buffer:
-            send_to_webhook(message_buffer)
+                print(f"Парсинг канала {channel_identifier} завершен.")
 
-        print("Парсинг завершен. Все сообщения отправлены или обработаны.")
+            except Exception as e:
+                # Если сбойнул один канал, продолжаем парсить остальные
+                print(f"ОШИБКА ПАРСИНГА КАНАЛА {channel_identifier}: {e}. Пропускаем этот канал.")
+
 
     except Exception as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА ПАРСИНГА: {e}")
+        print(f"КРИТИЧЕСКАЯ ОШИБКА TELETHON: {e}")
         
     finally:
-        # ОБНОВЛЕНИЕ СЕССИИ
         client.disconnect()
-        print(f"*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ФАЙЛ {session_file} ОБНОВЛЕН. ***")
+        print(f"\n*** КОНЕЦ: КЛИЕНТ TELETHON ОТКЛЮЧЕН. ФАЙЛ {session_file} ОБНОВЛЕН. ***")
 
 
 if __name__ == '__main__':
