@@ -24,14 +24,14 @@ except Exception as e:
 # Фиксированные параметры
 # >>> ИСПРАВЛЕНО: Правильный формат для списка каналов <<<
 CHANNELS_LIST = [
-    '@novostisochi',      # Добавлен @
-    '@sochi24tv',
-    '@livesochi',         # Дубликат удален
-    '@sochi_news4',       # Дубликат удален
-    '@sochitypical',
-    '@soch01',
-    '@sochi_online',
-    '@sochi03',           # Разделен с @sochi_news4
+    '@bbbreaking',      # Добавлен @
+    '@AlexCarrier',
+    '@Contora_Pishet',         # Дубликат удален
+    '@condottieros',       # Дубликат удален
+    '@mvd_23',
+    '@notes_veterans',
+    '@matveevkomment'
+    'OlympicPitbull',
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
