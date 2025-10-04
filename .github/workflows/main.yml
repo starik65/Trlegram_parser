@@ -13,7 +13,7 @@ on:
       webhook_url:
         description: 'URL вашего n8n Webhook'
         required: true
-        default: 'https://your.n8n.webhook.url'
+        default: 'https://telegus.ru/webhook/e02ed971-78dd-4742-86c9-e0f0ef1b1da4'
 
 jobs:
   run-parser:
