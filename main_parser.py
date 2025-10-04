@@ -25,13 +25,9 @@ except Exception as e:
 # >>> ИСПРАВЛЕНО: Правильный формат для списка каналов <<<
 CHANNELS_LIST = [
     '@bbbreaking',      # Добавлен @
-    '@AlexCarrier',
-    '@Contora_Pishet',         # Дубликат удален
-    '@condottieros',       # Дубликат удален
-    '@mvd_23',
-    '@notes_veterans',
-    '@matveevkomment'
-    'OlympicPitbull',
+    '@BlackAudit',
+    '@bankrollo',
+    '@banksta',
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
