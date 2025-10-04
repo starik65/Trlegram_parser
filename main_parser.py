@@ -24,10 +24,8 @@ except Exception as e:
 # Фиксированные параметры
 # >>> ИСПРАВЛЕНО: Правильный формат для списка каналов <<<
 CHANNELS_LIST = [
-    '@bbbreaking',      # Добавлен @
+    '@bankrollo',     # Добавлен @
     '@BlackAudit',
-    '@bankrollo',
-    '@banksta',
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
