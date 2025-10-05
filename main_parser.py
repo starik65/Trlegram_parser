@@ -5,7 +5,7 @@ import sys
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, MessageMediaWebPage
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # --- 1. КОНФИГУРАЦИЯ ---
 try:
@@ -107,16 +107,15 @@ def main():
                 print(f"Получено {len(messages)} сообщений. Обработка...")
                 count_fresh = 0
                 count_old = 0
-                utc_now = datetime.utcnow()
+                utc_now = datetime.now(timezone.utc)
 
                 for msg in messages:
                     cleaned_data = clean_message(msg, channel_entity)
                     if cleaned_data:
                         # === ФИЛЬТРАЦИЯ: только за последние сутки ===
-                        try:
-                            msg_time = datetime.fromisoformat(cleaned_data['date'].replace('Z','+00:00'))
-                        except:
-                            msg_time = msg.date
+                        msg_time = msg.date
+                        if msg_time.tzinfo is None:
+                            msg_time = msg_time.replace(tzinfo=timezone.utc)
                         if msg_time >= utc_now - timedelta(days=1):
                             message_buffer.append(cleaned_data)
                             count_fresh += 1
