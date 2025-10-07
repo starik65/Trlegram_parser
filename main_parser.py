@@ -29,7 +29,7 @@ CHANNELS_LIST = [
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
-LIMIT_MESSAGES = 500
+LIMIT_MESSAGES = 250
 
 def clean_message(msg, channel_entity):
     """Преобразует объект сообщения Telethon в чистый словарь JSON."""
