@@ -23,9 +23,8 @@ except Exception as e:
     sys.exit(1)
 
 CHANNELS_LIST = [
-    '@bankrollo',
+    '@yurasumy',
     '@BlackAudit',
-    '@mvd_23',
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
