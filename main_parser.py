@@ -25,6 +25,7 @@ except Exception as e:
 CHANNELS_LIST = [
     '@bankrollo',
     '@BlackAudit',
+    '@mvd_23',
 ]
 SESSION_NAME = 'colab_session' 
 BATCH_SIZE = 500
